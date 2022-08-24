@@ -436,11 +436,14 @@ class Builder(object):
             if self.data["poly"]:
                 files += ["poly"]
 
+            if self.data["vehicles"]:
+                for routepath in self.routenames:
+                    routename = os.path.basename(routepath)
+                    files.append(routename)
+                    self.files[routename] = routepath
+
             # translate the pseudo file names to real file names
             files = map(lambda name: self.files[name], files)
-
-            if self.data["vehicles"]:
-                files += self.routenames
 
             # add the files to the zip
             for name in files:
@@ -450,7 +453,7 @@ class Builder(object):
         with open(self.files["zip"], "rb") as zipfile:
             content = zipfile.read()
 
-        return base64.b64encode(content)
+        return base64.b64encode(content).decode('ascii')
 
     def finalize(self):
         try:
@@ -493,10 +496,15 @@ class OSMImporterWebSocket(WebSocket):
             if self.local:
                 builder.openSUMO()
             else:
-                data = builder.createZip()
+                zipData = builder.createZip()
+                if self.outputDir is not None:
+                    shutil.copytree(builder.tmp, os.path.join(self.outputDir, os.path.basename(builder.tmp)))
                 builder.finalize()
 
-                self.sendMessage(u"zip " + data)
+                if self.outputDir:
+                    self.sendMessage("json %s" % json.dumps({ "tmp": builder.tmp, "name": os.path.basename(builder.tmp) }))
+                else:
+                    self.sendMessage(u"zip " + zipData)
         except Exception:
             print(traceback.format_exc())
             # reset 'Generate Scenario' button
@@ -522,7 +530,7 @@ parser.add_argument("--port", type=int, default=8010,
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    OSMImporterWebSocket.local = args.testOutputDir is not None or not args.remote
+    OSMImporterWebSocket.local = args.testOutputDir is not None or not args.remote or not args.outputDir
     OSMImporterWebSocket.outputDir = args.outputDir
     if args.testOutputDir is not None:
         data = {u'duration': 900,
